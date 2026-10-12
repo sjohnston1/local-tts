@@ -123,6 +123,13 @@ Talk. The chip in the top-right corner shows "GPU (…)" once the model is loade
 - It can show short code examples on screen. It doesn't read the code aloud, it explains it.
 - Open **Video transcript** to see the full text. Click any line to jump there.
 
+### Architecture tab
+
+Four diagrams of how the app works, drawn in the page itself (no images): a map of the browser,
+server, GPU models, Ollama, database and library folder with every route labeled; the sequence of
+one spoken turn; how a file becomes searchable; and where an answer's facts come from. If you
+change how the app works, the diagrams are plain inline SVG in `web/index.html`.
+
 ### Settings tab
 
 - **Video:** start playing when I pick a video, resume after the answer, and speakers or
@@ -131,6 +138,122 @@ Talk. The chip in the top-right corner shows "GPU (…)" once the model is loade
   answers come only from your documents, whether to show the sources line, and the
   personality/instructions, with a **Reset to default** button.
 - All settings are saved in your browser.
+
+## Architecture
+
+The same diagrams are in the app's **Architecture** tab, with more detail.
+
+### How everything is connected
+
+```mermaid
+flowchart LR
+  subgraph Browser["Browser · web/"]
+    idx["index.html<br/>Read + Settings tabs"]
+    talk["talk.js<br/>Talk tab: mic, noise gate, replies"]
+    vid["video.js<br/>player + transcript"]
+    lib["library.js<br/>Library tab"]
+  end
+  subgraph Server["Server · FastAPI on port 48765"]
+    reading["/api/extract<br/>/api/extract-url"]
+    voice["/api/speak<br/>/api/chunks, /api/voices"]
+    talkapi["/api/transcribe<br/>/api/chat<br/>/api/llm-models, /api/llm-warm"]
+    conv["/api/conversations"]
+    libapi["/api/upload, /api/youtube<br/>/api/items, /api/search"]
+    libpy["library.py + textutil.py<br/>worker threads, search"]
+  end
+  web["Any website"]
+  kokoro["Kokoro-82M (GPU)"]
+  whisper["Whisper (GPU)"]
+  ollama["Ollama on port 11434<br/>(separate program)"]
+  db[("SQLite<br/>data/local-tts.db")]
+  files[("library/ folder")]
+  yt["YouTube<br/>yt-dlp + ffmpeg"]
+  idx -->|file / URL| reading
+  idx -->|text| voice
+  talk -->|each sentence| voice
+  talk -->|audio, question| talkapi
+  talk -->|save / reopen| conv
+  vid --> libapi
+  lib --> libapi
+  reading --> web
+  voice --> kokoro
+  talkapi --> whisper
+  talkapi <-->|prompt / tokens| ollama
+  talkapi -->|search passages| db
+  conv --> db
+  libapi --> libpy
+  libpy --> db
+  libpy --> files
+  libpy --> yt
+```
+
+### One spoken turn
+
+```mermaid
+sequenceDiagram
+  actor You
+  participant T as talk.js
+  participant S as Server
+  participant W as Whisper
+  participant O as Ollama
+  participant K as Kokoro
+  You->>T: speak
+  Note over T: gate opens, video pauses,<br/>audio collected until you pause
+  T->>S: POST /api/transcribe (16 kHz audio)
+  S->>W: audio
+  W-->>S: text
+  S-->>T: your words
+  T->>S: POST /api/chat (chat + personality)
+  Note over S: adds context: the chosen file<br/>or matching library passages
+  S->>O: prompt + passages
+  loop each sentence while the answer streams
+    O-->>S: tokens
+    S-->>T: stream passed through
+    T->>S: POST /api/speak (one sentence)
+    S->>K: text
+    K-->>S: WAV audio
+    S-->>T: WAV file
+    T-->>You: played in order
+  end
+```
+
+If you talk over it, talk.js aborts the `/api/chat` request, empties the sentence queue, stops the
+audio and saves what was said so far.
+
+### How a file becomes searchable
+
+```mermaid
+flowchart TD
+  up["Upload or drag a file"] --> item
+  yt["YouTube link"] --> item
+  rs["File added in Explorer<br/>(press Rescan)"] --> item
+  item["Library item<br/>file in library/ + row in SQLite"]
+  item -->|video| vq["Video worker"]
+  item -->|document| dq["Document worker"]
+  vq --> dl["yt-dlp download<br/>(YouTube links only)"] --> ff["ffmpeg: 16 kHz mono audio"] --> wh["Whisper in 2-minute pieces<br/>timestamped segments"]
+  dq --> ex["Extract text<br/>PDF pages, Word, HTML, text, code"] --> sp["Split into passages<br/>about 1,200 characters"]
+  wh -->|"segments + 60 s passages"| store
+  sp -->|"passages + full text"| store
+  store[("SQLite: segments, documents, chunks<br/>chunks_fts keyword index (BM25)")]
+```
+
+### Where an answer's facts come from
+
+```mermaid
+flowchart TD
+  q["Your question + the chat so far"] --> mode{"Which scope?"}
+  vid["Video open: the transcript so far<br/>(last 45 s weighted) is added"] -.-> prompt
+  mode -->|"one document picked"| doc["Best passages of that file,<br/>or all of it if under 24,000 characters"]
+  mode -->|"library search (default)"| bm["BM25 search in the folder"] --> weak["Drop weak matches<br/>(about 40% of the question's real words)"] --> any{"Passages left?"}
+  any -->|yes| use["Answer from the passages<br/>and name the source"]
+  any -->|no| none["Per Settings: say it couldn't find it,<br/>or fall back to general knowledge"]
+  mode -->|"Don't search the library"| plain["Plain chat"]
+  doc --> prompt
+  use --> prompt
+  none --> prompt
+  plain --> prompt
+  prompt["Ollama writes the answer<br/>personality + context + chat, streamed and spoken"]
+```
 
 ## Project layout
 
@@ -141,7 +264,7 @@ server/app.py             FastAPI server: voices, speech-to-text, Ollama chat, l
 server/library.py         Library folders on disk, YouTube downloads, transcription, search
 server/db.py              SQLite schema (items, transcripts, search index, conversations, settings)
 server/textutil.py        Text cleanup, sentence chunking, PDF/DOCX/HTML readers
-web/index.html            The app page, Read tab and Settings tab (plain HTML/JS, no build step)
+web/index.html            The app page, Read, Architecture and Settings tabs (plain HTML/JS, no build step)
 web/library.js            Library tab
 web/talk.js               Talk tab: mic, speech detection, streaming replies, interruptions
 web/video.js              Video companion: playback, transcript, context for the bot
