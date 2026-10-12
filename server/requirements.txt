@@ -1,0 +1,13 @@
+kokoro>=0.9.4
+soundfile
+numpy
+fastapi
+uvicorn
+python-multipart
+pypdf
+python-docx
+requests
+beautifulsoup4
+transformers
+yt-dlp[default]
+imageio-ffmpeg

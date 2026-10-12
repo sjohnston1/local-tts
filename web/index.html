@@ -1,0 +1,704 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Local TTS</title>
+<style>
+  :root {
+    --primary: #6750a4; --on-primary: #fff; --primary-container: #eaddff; --on-primary-container: #21005d;
+    --secondary-container: #e8def8; --on-secondary-container: #1d192b;
+    --surface: #fef7ff; --surface-low: #f7f2fa; --surface-high: #ece6f0; --on-surface: #1d1b20;
+    --on-surface-variant: #49454f; --outline: #79747e; --outline-variant: #cac4d0;
+    --highlight: #ffd8e4; --error: #b3261e;
+    color-scheme: light;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --primary: #d0bcff; --on-primary: #381e72; --primary-container: #4f378b; --on-primary-container: #eaddff;
+      --secondary-container: #4a4458; --on-secondary-container: #e8def8;
+      --surface: #141218; --surface-low: #1d1b20; --surface-high: #2b2930; --on-surface: #e6e0e9;
+      --on-surface-variant: #cac4d0; --outline: #938f99; --outline-variant: #49454f;
+      --highlight: #633b48; --error: #f2b8b5;
+      color-scheme: dark;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--surface); color: var(--on-surface);
+         font: 16px/1.5 "Segoe UI", Roboto, system-ui, sans-serif; }
+  header { display: flex; align-items: center; gap: 12px; padding: 14px 20px; }
+  header h1 { font-size: 22px; font-weight: 500; margin: 0; flex: 1; }
+  .chip { font-size: 13px; padding: 4px 12px; border-radius: 8px; border: 1px solid var(--outline-variant);
+          color: var(--on-surface-variant); white-space: nowrap; }
+  .chip.ok { background: var(--secondary-container); color: var(--on-secondary-container); border-color: transparent; }
+  main { max-width: 900px; margin: 0 auto; padding: 0 16px 140px; display: grid; gap: 16px; }
+  .card { background: var(--surface-low); border-radius: 16px; padding: 16px; }
+  .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+  button { font: inherit; font-size: 14px; font-weight: 500; border-radius: 20px; height: 40px; padding: 0 20px;
+           border: 1px solid var(--outline); background: transparent; color: var(--primary); cursor: pointer;
+           display: inline-flex; align-items: center; gap: 8px; }
+  button:hover { background: color-mix(in srgb, var(--primary) 8%, transparent); }
+  button.filled { background: var(--primary); color: var(--on-primary); border-color: transparent; }
+  button.tonal { background: var(--secondary-container); color: var(--on-secondary-container); border-color: transparent; }
+  button:disabled { opacity: .38; cursor: default; }
+  button.icon { width: 48px; height: 48px; padding: 0; justify-content: center; border: none; border-radius: 24px; }
+  button.icon.big { width: 64px; height: 64px; border-radius: 20px; background: var(--primary-container); color: var(--on-primary-container); }
+  svg { width: 24px; height: 24px; fill: currentColor; }
+  input[type=url], select, textarea { font: inherit; color: var(--on-surface); background: transparent;
+           border: 1px solid var(--outline); border-radius: 4px; padding: 8px 12px; }
+  input[type=url], input[type=search] { flex: 1; min-width: 200px; height: 40px; font: inherit; color: var(--on-surface); background: transparent; border: 1px solid var(--outline); border-radius: 4px; padding: 8px 12px; }
+  select { height: 40px; background-color: var(--surface); color-scheme: inherit; }
+  select option, select optgroup { background-color: var(--surface-high); color: var(--on-surface); }
+  select option:checked { background-color: var(--secondary-container); color: var(--on-secondary-container); }
+  textarea { width: 100%; min-height: 320px; resize: vertical; line-height: 1.6; }
+  input:focus, select:focus, textarea:focus { outline: 2px solid var(--primary); outline-offset: -1px; border-color: transparent; }
+  label.field { display: grid; gap: 4px; font-size: 12px; color: var(--on-surface-variant); }
+  .settings { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  @media (max-width: 600px) { .settings { grid-template-columns: 1fr; } }
+  input[type=range] { width: 100%; accent-color: var(--primary); }
+  .muted { color: var(--on-surface-variant); font-size: 14px; }
+  #reader { max-height: 60vh; overflow-y: auto; line-height: 1.8; font-size: 17px; padding-right: 4px; }
+  #reader p { margin: 0 0 1em; }
+  #reader span { cursor: pointer; border-radius: 4px; transition: background .15s; }
+  #reader span:hover { background: var(--surface-high); }
+  #reader span.done { color: var(--on-surface-variant); }
+  #reader span.current { background: var(--highlight); color: var(--on-surface); }
+  .player { position: fixed; left: 0; right: 0; bottom: 0; background: var(--surface-high);
+            border-radius: 24px 24px 0 0; padding: 10px 16px 14px; box-shadow: 0 -2px 8px rgba(0,0,0,.15); }
+  .player .inner { max-width: 900px; margin: 0 auto; display: grid; gap: 6px; }
+  .player .controls { display: flex; align-items: center; justify-content: center; gap: 8px; }
+  progress { width: 100%; height: 4px; appearance: none; border: none; border-radius: 2px; background: var(--outline-variant); }
+  progress::-webkit-progress-bar { background: var(--outline-variant); border-radius: 2px; }
+  progress::-webkit-progress-value { background: var(--primary); border-radius: 2px; }
+  progress::-moz-progress-bar { background: var(--primary); }
+  .status { display: flex; justify-content: space-between; font-size: 13px; color: var(--on-surface-variant); }
+  #snack { position: fixed; left: 50%; bottom: 130px; transform: translateX(-50%); background: var(--on-surface);
+           color: var(--surface); padding: 12px 16px; border-radius: 4px; font-size: 14px; max-width: 90vw;
+           opacity: 0; pointer-events: none; transition: opacity .2s; }
+  #snack.show { opacity: 1; }
+  #drop { position: fixed; inset: 0; background: color-mix(in srgb, var(--primary) 20%, transparent);
+          border: 3px dashed var(--primary); display: none; place-items: center; font-size: 22px; z-index: 5; }
+  #drop.show { display: grid; }
+  .hidden { display: none !important; }
+  /* video */
+  #video { width: 100%; max-height: 52vh; border-radius: 12px; background: #000; display: block; }
+  #videoLines { max-height: 220px; overflow-y: auto; font-size: 14px; margin-top: 8px; }
+  #videoLines div { display: flex; gap: 10px; padding: 3px 6px; border-radius: 6px; cursor: pointer; }
+  #videoLines div:hover { background: var(--surface-high); }
+  #videoLines div.now { background: var(--highlight); }
+  #videoLines time { color: var(--primary); font-variant-numeric: tabular-nums; flex: none; }
+  #askText { flex: 1; min-width: 200px; height: 40px; font: inherit; color: var(--on-surface); background: transparent;
+             border: 1px solid var(--outline); border-radius: 20px; padding: 0 16px; }
+  #askText:focus { outline: 2px solid var(--primary); outline-offset: -1px; border-color: transparent; }
+  /* library */
+  body[data-mode="library"] .read-only, body[data-mode="library"] .talk-only,
+  body:not([data-mode="library"]) .lib-only { display: none !important; }
+  body[data-mode="library"] .lib-hide { display: none !important; }
+  body[data-mode="library"] main { max-width: 1100px; padding-bottom: 40px; }
+  .lib { display: grid; grid-template-columns: 260px 1fr; gap: 16px; align-items: start; }
+  @media (max-width: 760px) { .lib { grid-template-columns: 1fr; } }
+  #tree { display: grid; gap: 2px; font-size: 14px; max-height: 60vh; overflow-y: auto; }
+  #tree button { justify-content: flex-start; border: none; border-radius: 8px; height: 34px; padding: 0 10px;
+                 color: var(--on-surface); font-weight: 400; width: 100%; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+  #tree button.sel { background: var(--secondary-container); color: var(--on-secondary-container); font-weight: 500; }
+  #tree button svg { width: 18px; height: 18px; flex: none; color: var(--on-surface-variant); }
+  #tree button.drop { outline: 2px dashed var(--primary); }
+  .crumbs { font-size: 18px; font-weight: 500; }
+  .crumbs a { color: var(--primary); cursor: pointer; text-decoration: none; }
+  .items { display: grid; gap: 4px; }
+  .it { display: grid; grid-template-columns: 28px 1fr auto; gap: 12px; align-items: center; padding: 8px 10px;
+        border-radius: 12px; background: var(--surface); }
+  .it:hover { background: var(--surface-high); }
+  .it svg { color: var(--primary); }
+  .it .t { font-weight: 500; overflow-wrap: anywhere; }
+  .it .m { font-size: 12px; color: var(--on-surface-variant); display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+  .it .m progress { width: 90px; height: 4px; }
+  .it .m .err { color: var(--error); }
+  .it .a { display: flex; gap: 2px; }
+  .it .a button { height: 32px; padding: 0 10px; border: none; font-size: 13px; }
+  .it[draggable="true"] { cursor: grab; }
+  .hits { display: grid; gap: 8px; }
+  .hit { padding: 10px 12px; border-radius: 12px; background: var(--surface); font-size: 14px; cursor: pointer; }
+  .hit b { color: var(--primary); }
+  .hit p { margin: 4px 0 0; color: var(--on-surface-variant); }
+  dialog { border: none; border-radius: 24px; padding: 24px; background: var(--surface-high); color: var(--on-surface); min-width: 320px; }
+  dialog::backdrop { background: rgba(0,0,0,.4); }
+  .sources { font-size: 12px; color: var(--on-surface-variant); margin: -4px 0 4px 6px; align-self: flex-start; max-width: 80%; }
+  .sources a { color: var(--primary); cursor: pointer; }
+  /* mode tabs */
+  .tabs { display: flex; gap: 4px; background: var(--surface-high); border-radius: 20px; padding: 4px; }
+  .tabs button { height: 32px; border: none; padding: 0 16px; color: var(--on-surface-variant); }
+  .tabs button.active { background: var(--secondary-container); color: var(--on-secondary-container); }
+  body[data-mode="read"] .talk-only, body[data-mode="talk"] .read-only { display: none !important; }
+  body:not([data-mode="settings"]) .settings-only { display: none !important; }
+  body[data-mode="settings"] .read-only, body[data-mode="settings"] .talk-only,
+  body[data-mode="settings"] .lib-only, body[data-mode="settings"] .lib-hide { display: none !important; }
+  body[data-mode="settings"] main { padding-bottom: 40px; max-width: 640px; }
+  body[data-mode="talk"] main { padding-bottom: 40px; }
+  #docChip { display: flex; align-items: center; gap: 8px; max-width: 100%; padding: 4px 6px 4px 14px; border-radius: 16px;
+             background: var(--primary-container); color: var(--on-primary-container); font-size: 14px; }
+  #docChip span { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+  #docChip button { border: none; color: inherit; }
+  /* past conversations */
+  .hist { width: 100%; max-width: 640px; display: grid; gap: 8px; margin-top: 4px; }
+  .hist summary { cursor: pointer; font-weight: 500; padding: 4px 0; }
+  .hist input[type=search] { width: 100%; margin: 6px 0; }
+  #histList { max-height: 340px; overflow-y: auto; display: grid; gap: 2px; align-content: start; }
+  .hgroup { font-size: 12px; font-weight: 500; color: var(--on-surface-variant); padding: 10px 10px 2px; text-transform: uppercase; letter-spacing: .04em; }
+  .hi { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 6px; padding: 6px 6px 6px 12px;
+        border-radius: 12px; cursor: pointer; }
+  .hi:hover { background: var(--surface-high); }
+  .hi.sel { background: var(--secondary-container); color: var(--on-secondary-container); }
+  .hi .t { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: 14px; }
+  .hi .m { font-size: 12px; color: var(--on-surface-variant); }
+  .hi.sel .m { color: inherit; opacity: .8; }
+  .hi .a { display: flex; opacity: 0; }
+  .hi:hover .a, .hi:focus-within .a, .hi.sel .a { opacity: 1; }
+  @media (hover: none) { .hi .a { opacity: 1; } }
+  .hi .a button { width: 32px; height: 32px; padding: 0; justify-content: center; border: none; border-radius: 16px; color: inherit; }
+  .hi .a svg { width: 18px; height: 18px; }
+  .hi input { width: 100%; height: 32px; font: inherit; font-size: 14px; color: var(--on-surface); background: var(--surface);
+              border: 1px solid var(--primary); border-radius: 8px; padding: 0 10px; }
+  /* talk mode */
+  .talk-stage { display: grid; justify-items: center; gap: 12px; padding: 24px 16px; }
+  #orb { width: 132px; height: 132px; border-radius: 50%; border: none; padding: 0; cursor: pointer;
+         background: var(--surface-high); color: var(--on-surface-variant); display: grid; place-items: center;
+         transition: background .25s, transform .1s; box-shadow: 0 0 0 var(--ring, 0px) color-mix(in srgb, var(--primary) 25%, transparent); }
+  #orb svg { width: 48px; height: 48px; }
+  #orb.listening { background: var(--secondary-container); color: var(--on-secondary-container); }
+  #orb.hearing { background: var(--primary); color: var(--on-primary); }
+  #orb.busy { background: var(--primary-container); color: var(--on-primary-container); animation: pulse 1.2s ease-in-out infinite; }
+  #orb.speaking { background: var(--primary-container); color: var(--on-primary-container); }
+  @keyframes pulse { 50% { transform: scale(.94); } }
+  #talkState { font-size: 18px; font-weight: 500; }
+  .meter { width: 220px; height: 6px; border-radius: 3px; background: var(--outline-variant); position: relative; overflow: hidden; }
+  .meter > div { position: absolute; inset: 0 auto 0 0; width: 0; background: var(--primary); transition: width .05s; }
+  .meter > span { position: absolute; top: 0; bottom: 0; width: 2px; background: var(--error); }
+  /* mic sensitivity = the noise gate: drag the red marker along the level meter */
+  .gate { position: relative; width: 280px; height: 24px; display: grid; align-items: center; }
+  .gate .meter { width: 100%; }
+  .gate #thresholdMark { opacity: 0; border-left: 1px dashed var(--on-surface); background: none; transition: opacity .15s; }
+  .gate input[type=range] { position: absolute; inset: 0; width: 100%; margin: 0; background: transparent; appearance: none; cursor: ew-resize; }
+  .gate input[type=range]::-webkit-slider-runnable-track { height: 24px; background: transparent; }
+  .gate input[type=range]::-webkit-slider-thumb { appearance: none; width: 6px; height: 22px; margin-top: 1px; border-radius: 3px; background: var(--error); border: none; }
+  .gate input[type=range]::-moz-range-track { height: 24px; background: transparent; }
+  .gate input[type=range]::-moz-range-thumb { width: 6px; height: 22px; border-radius: 3px; background: var(--error); border: none; }
+  .gate input[type=range]:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; border-radius: 4px; }
+  .gateLabel { font-size: 13px; color: var(--on-surface-variant); text-align: center; }
+  #transcript { display: flex; flex-direction: column; gap: 10px; max-height: 50vh; overflow-y: auto; }
+  .msg { max-width: 80%; padding: 10px 14px; border-radius: 18px; line-height: 1.45; white-space: pre-wrap; }
+  .msg.user { align-self: flex-end; background: var(--primary); color: var(--on-primary); border-bottom-right-radius: 4px; }
+  .msg.assistant { align-self: flex-start; background: var(--surface-high); border-bottom-left-radius: 4px; }
+  .msg.interrupted::after { content: " — interrupted"; opacity: .6; font-style: italic; }
+  .empty { text-align: center; padding: 8px; }
+  details summary { cursor: pointer; color: var(--on-surface-variant); font-size: 14px; }
+  .check { display: flex; gap: 8px; align-items: center; font-size: 14px; }
+  .check input { accent-color: var(--primary); width: 18px; height: 18px; }
+</style>
+</head>
+<body data-mode="read">
+<header>
+  <svg viewBox="0 0 24 24" style="color:var(--primary)"><path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3A4.5 4.5 0 0 0 14 7.97v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z"/></svg>
+  <h1>Local TTS</h1>
+  <nav class="tabs" role="tablist">
+    <button id="tabRead" class="active" role="tab">Read</button>
+    <button id="tabTalk" role="tab">Talk</button>
+    <button id="tabLibrary" role="tab">Library</button>
+    <button id="tabSettings" role="tab">Settings</button>
+  </nav>
+  <span id="device" class="chip" title="Where the voice model is running">Connecting…</span>
+</header>
+
+<main>
+  <div class="lib lib-only">
+    <section class="card" style="display:grid;gap:10px">
+      <div class="row" style="justify-content:space-between">
+        <strong>Folders</strong>
+        <button id="newFolder" title="New folder inside the selected one" style="height:32px;padding:0 12px">+ Folder</button>
+      </div>
+      <div id="tree"></div>
+      <div class="row" id="folderActions">
+        <button id="renameFolder" style="height:32px;padding:0 12px">Rename</button>
+        <button id="moveFolder" style="height:32px;padding:0 12px">Move</button>
+        <button id="deleteFolder" style="height:32px;padding:0 12px">Delete</button>
+      </div>
+      <hr style="border:none;border-top:1px solid var(--outline-variant);width:100%">
+      <div class="muted" style="font-size:12px">Library folder on your PC</div>
+      <div id="libRoot" style="font-size:13px;overflow-wrap:anywhere"></div>
+      <div class="row">
+        <button id="changeRoot" style="height:32px;padding:0 12px" title="Move the whole library somewhere else">Change…</button>
+        <button id="rescan" style="height:32px;padding:0 12px" title="Pick up files you added, moved or deleted in File Explorer">Rescan</button>
+        <button id="openRoot" style="height:32px;padding:0 12px" title="Open this folder in File Explorer">Open</button>
+      </div>
+    </section>
+    <section style="display:grid;gap:16px">
+      <section class="card" style="display:grid;gap:12px">
+        <div class="crumbs" id="crumbs"></div>
+        <div class="row">
+          <button class="tonal" id="uploadBtn" title="Videos, PDFs, Word docs, text, markdown, code files">
+            <svg viewBox="0 0 24 24"><path d="M5 20h14v-2H5v2zm0-10h4v6h6v-6h4l-7-7-7 7z"/></svg>Upload files
+          </button>
+          <input type="file" id="uploadInput" class="hidden" multiple>
+          <input type="url" id="ytUrl" placeholder="YouTube link to download into this folder">
+          <button id="ytAdd">Download</button>
+        </div>
+        <div class="row">
+          <input type="search" id="libSearch" placeholder="Search everything in this folder…" style="flex:1;min-width:200px;height:40px">
+        </div>
+        <div class="hits" id="hits"></div>
+        <div class="items" id="items"></div>
+        <p class="muted" id="libEmpty" style="margin:0">Nothing here yet. Upload files, drop them on the page, or paste a YouTube link.</p>
+      </section>
+    </section>
+  </div>
+  <dialog id="moveDialog">
+    <form method="dialog" style="display:grid;gap:16px">
+      <strong id="moveTitle">Move to…</strong>
+      <select id="moveTarget"></select>
+      <div class="row" style="justify-content:flex-end">
+        <button value="cancel">Cancel</button>
+        <button class="filled" value="ok">Move</button>
+      </div>
+    </form>
+  </dialog>
+
+  <section class="card talk-only" style="display:grid;gap:10px">
+    <div class="row" style="justify-content:space-between">
+      <div class="row">
+        <select id="videoPick" title="Videos from your library"><option value="">Watch a video from your library…</option></select>
+        <button id="closeVideo" class="hidden">Close video</button>
+      </div>
+      <span class="muted" id="videoStatus">Add videos in the Library tab, then pick one here and ask questions as you watch.</span>
+    </div>
+    <div id="videoBox" class="hidden" style="display:grid;gap:10px">
+      <video id="video" controls playsinline></video>
+      <details id="videoTranscript">
+        <summary>Video transcript</summary>
+        <div id="videoLines"></div>
+      </details>
+    </div>
+  </section>
+
+  <section class="card talk-only">
+    <div class="talk-stage">
+      <button id="orb" title="Start talking">
+        <svg viewBox="0 0 24 24"><path d="M12 14a3 3 0 0 0 3-3V5a3 3 0 0 0-6 0v6a3 3 0 0 0 3 3zm5-3a5 5 0 0 1-10 0H5a7 7 0 0 0 6 6.92V21h2v-3.08A7 7 0 0 0 19 11h-2z"/></svg>
+      </button>
+      <div id="talkState">Tap the mic to start</div>
+      <div class="gate" title="Mic level. Drag the red marker: sounds quieter than it are ignored.">
+        <div class="meter"><div id="level"></div><span id="thresholdMark"></span></div>
+        <input type="range" id="sens" min="-80" max="-10" step="1" value="-45" aria-label="Mic sensitivity (noise gate)">
+      </div>
+      <div class="gateLabel">Mic sensitivity: <span id="sensVal"></span> · drag the red marker so it sits just above your background noise</div>
+      <div class="row">
+        <button class="filled" id="talkToggle">Start conversation</button>
+        <button id="muteMic" title="Mute the mic so a cough or sneeze won't interrupt (shortcut: M)" disabled>Mute mic</button>
+        <button id="newChat">New conversation</button>
+      </div>
+      <div id="docChip" class="hidden">
+        <span>Asking about: <b id="docName"></b></span>
+        <button id="docClear" title="Stop asking about this document" style="height:28px;padding:0 10px">✕</button>
+      </div>
+      <details class="hist" id="histBox" open>
+        <summary>Past conversations <span class="muted" id="histCount"></span></summary>
+        <input type="search" id="histSearch" placeholder="Search conversations…" autocomplete="off">
+        <div id="histList"></div>
+      </details>
+    </div>
+  </section>
+
+  <section class="card talk-only">
+    <div id="transcript"><p class="muted empty" id="emptyNote">Your conversation will show up here. Headphones work best, so it doesn't hear itself.</p></div>
+    <div class="row" style="margin-top:12px">
+      <input id="askText" placeholder="Or type a question…" autocomplete="off">
+      <button class="filled" id="askSend">Ask</button>
+    </div>
+  </section>
+
+  <section class="card talk-only" style="display:grid;gap:14px">
+    <div class="settings">
+      <label class="field">AI model (from Ollama)
+        <select id="llmModel"><option value="">Loading…</option></select>
+      </label>
+      <label class="field">Look things up in
+        <select id="scope"><option value="">Whole library</option><option value="__off">Don't search the library</option></select>
+      </label>
+    </div>
+    <span class="muted" style="font-size:13px">More options (interrupting, pauses, personality, video playback) are in the Settings tab.</span>
+  </section>
+
+  <section class="card settings-only" style="display:grid;gap:14px">
+    <strong>Video</strong>
+    <label class="check"><input type="checkbox" id="autoPlayVideo" checked> Start playing a video as soon as I pick it</label>
+    <label class="check"><input type="checkbox" id="autoResume" checked> Resume the video after the answer</label>
+    <label class="check"><span>While the video plays:</span>
+      <select id="videoMicMode">
+        <option value="paused">Speakers: speak up to ask</option>
+        <option value="always">Headphones: normal listening</option>
+      </select>
+    </label>
+  </section>
+
+  <section class="card settings-only" style="display:grid;gap:14px">
+    <strong>Conversation</strong>
+    <label class="field">When I ask about my uploaded documents
+      <select id="libMode">
+        <option value="only">Answer only from my documents</option>
+        <option value="prefer">Use my documents, but fall back to general knowledge</option>
+      </select>
+    </label>
+    <label class="check"><input type="checkbox" id="bargeIn" checked> Let me interrupt it by talking</label>
+    <label class="check"><input type="checkbox" id="showSources" checked> Show "From your library" sources under answers</label>
+    <label class="check"><span>Pause before replying:</span>
+      <select id="endSilence">
+        <option value="500">Short (0.5 s)</option>
+        <option value="800" selected>Normal (0.8 s)</option>
+        <option value="1300">Long (1.3 s)</option>
+      </select>
+    </label>
+    <label class="field">Personality / instructions
+      <textarea id="systemPrompt" style="min-height:140px"></textarea>
+    </label>
+    <div class="row"><button id="resetPrompt" title="Put back the original instructions" style="height:32px;padding:0 14px">Reset to default</button></div>
+  </section>
+
+  <section class="card read-only">
+    <div class="row">
+      <button class="tonal" id="openFile" title="Open a .txt, .md, .pdf, .docx or .html file">
+        <svg viewBox="0 0 24 24"><path d="M20 6h-8l-2-2H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2z"/></svg>Open file
+      </button>
+      <input type="file" id="fileInput" class="hidden" accept=".txt,.md,.pdf,.docx,.html,.htm,text/*">
+      <input type="url" id="urlInput" placeholder="Paste a webpage link to read it aloud">
+      <button id="loadUrl">Load page</button>
+    </div>
+    <p class="muted" id="sourceLabel" style="margin:8px 0 0">Type or paste text below, open a file, load a webpage, or drop a file anywhere on this page.</p>
+  </section>
+
+  <section class="card read-only">
+    <div class="row" style="justify-content:space-between;margin-bottom:8px">
+      <strong id="viewTitle">Text</strong>
+      <div class="row">
+        <span class="muted" id="counts"></span>
+        <button id="askDoc" class="tonal" title="Switch to the Talk tab and ask questions about this text" style="height:32px;padding:0 14px">Ask about this</button>
+        <button id="editBtn" class="hidden">Edit text</button>
+        <button id="clearBtn">Clear</button>
+      </div>
+    </div>
+    <textarea id="text" placeholder="Type or paste text here…"></textarea>
+    <div id="reader" class="hidden" title="Click any sentence to start reading from there"></div>
+  </section>
+
+  <section class="card settings lib-hide">
+    <label class="field">Voice
+      <select id="voice"></select>
+    </label>
+    <label class="field"><span>Speed: <span id="speedVal">1.00×</span></span>
+      <input type="range" id="speed" min="0.5" max="2" step="0.05" value="1">
+    </label>
+  </section>
+</main>
+
+<div class="player read-only">
+  <div class="inner">
+    <progress id="progress" value="0" max="1"></progress>
+    <div class="status"><span id="status">Ready</span><span id="position"></span></div>
+    <div class="controls">
+      <button class="icon" id="prevBtn" title="Previous chunk"><svg viewBox="0 0 24 24"><path d="M6 6h2v12H6zm3.5 6 8.5 6V6z"/></svg></button>
+      <button class="icon big" id="playBtn" title="Play / pause (Space)">
+        <svg viewBox="0 0 24 24" id="playIcon"><path d="M8 5v14l11-7z"/></svg>
+        <svg viewBox="0 0 24 24" id="pauseIcon" class="hidden"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/></svg>
+      </button>
+      <button class="icon" id="nextBtn" title="Next chunk"><svg viewBox="0 0 24 24"><path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z"/></svg></button>
+      <button class="icon" id="stopBtn" title="Stop"><svg viewBox="0 0 24 24"><path d="M6 6h12v12H6z"/></svg></button>
+    </div>
+  </div>
+</div>
+
+<div id="snack"></div>
+<div id="drop">Drop files here</div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const els = {
+  text: $("text"), reader: $("reader"), voice: $("voice"), speed: $("speed"), speedVal: $("speedVal"),
+  play: $("playBtn"), playIcon: $("playIcon"), pauseIcon: $("pauseIcon"), prev: $("prevBtn"),
+  next: $("nextBtn"), stop: $("stopBtn"), progress: $("progress"), status: $("status"),
+  position: $("position"), counts: $("counts"), edit: $("editBtn"), clear: $("clearBtn"),
+  viewTitle: $("viewTitle"), sourceLabel: $("sourceLabel"), device: $("device"),
+};
+
+const state = {
+  chunks: [],        // [{text, para}]
+  index: 0,
+  playing: false,
+  cache: new Map(),  // "voice|speed|i" -> Promise<objectURL>
+  audio: new Audio(),
+  runId: 0,          // bumps on stop/seek so stale async work is ignored
+};
+
+// ---------- small helpers ----------
+const store = {
+  get(k, d) { try { return localStorage.getItem(k) ?? d; } catch { return d; } },
+  set(k, v) { try { localStorage.setItem(k, v); } catch {} },
+};
+let snackTimer;
+function snack(msg) {
+  const s = $("snack"); s.textContent = msg; s.classList.add("show");
+  clearTimeout(snackTimer); snackTimer = setTimeout(() => s.classList.remove("show"), 4500);
+}
+async function api(path, opts = {}) {
+  const res = await fetch(path, opts);
+  if (!res.ok) {
+    let msg = res.statusText;
+    try { const j = await res.json(); msg = typeof j.detail === "string" ? j.detail : JSON.stringify(j.detail); } catch {}
+    throw new Error(msg);
+  }
+  return res;
+}
+function updateCounts() {
+  const t = els.text.value.trim();
+  const words = t ? t.split(/\s+/).length : 0;
+  els.counts.textContent = words ? `${words.toLocaleString()} words · ~${Math.max(1, Math.round(words / 160))} min` : "";
+}
+
+// ---------- voices & settings ----------
+async function loadVoices() {
+  try {
+    const voices = await (await api("/api/voices")).json();
+    const groups = {};
+    for (const v of voices) (groups[`${v.accent} ${v.gender}`] ??= []).push(v);
+    for (const [label, list] of Object.entries(groups)) {
+      const og = document.createElement("optgroup"); og.label = label;
+      for (const v of list) og.append(new Option(v.name, v.id));
+      els.voice.append(og);
+    }
+    els.voice.value = store.get("voice", "af_heart");
+    if (!els.voice.value) els.voice.value = "af_heart";
+  } catch (e) { snack("Can't reach the TTS server — is start.bat running?"); }
+}
+els.voice.onchange = () => { store.set("voice", els.voice.value); resetCache(); };
+els.speed.value = store.get("speed", "1");
+const showSpeed = () => els.speedVal.textContent = Number(els.speed.value).toFixed(2) + "×";
+showSpeed();
+els.speed.oninput = showSpeed;
+els.speed.onchange = () => { store.set("speed", els.speed.value); resetCache(); };
+
+async function pollHealth() {
+  try {
+    const h = await (await api("/api/health")).json();
+    const loaded = h.device !== "not loaded";
+    els.device.textContent = loaded ? h.device.replace(/^cuda/, "GPU") : "Loading model…";
+    els.device.classList.toggle("ok", loaded);
+    if (!loaded) setTimeout(pollHealth, 2000);
+  } catch { els.device.textContent = "Server offline"; setTimeout(pollHealth, 3000); }
+}
+
+// ---------- loading text ----------
+let docLabel = "";
+$("askDoc").onclick = () => {
+  const text = els.text.value.trim();
+  if (!text) { snack("Load or paste some text first."); return; }
+  setMode("talk");
+  window.talk?.focusDoc({ title: docLabel || "Pasted text", text });
+};
+function setText(text, label) {
+  docLabel = label || "";
+  stop();
+  els.text.value = text;
+  state.chunks = [];
+  showEditor();
+  updateCounts();
+  if (label) els.sourceLabel.textContent = `Loaded: ${label}`;
+}
+async function loadFile(file) {
+  if (!file) return;
+  els.status.textContent = `Reading ${file.name}…`;
+  try {
+    const fd = new FormData(); fd.append("file", file);
+    const j = await (await api("/api/extract", { method: "POST", body: fd })).json();
+    setText(j.text, j.title);
+    els.status.textContent = "Ready";
+  } catch (e) { els.status.textContent = "Ready"; snack(e.message); }
+}
+$("openFile").onclick = () => $("fileInput").click();
+$("fileInput").onchange = (e) => { loadFile(e.target.files[0]); e.target.value = ""; };
+async function loadUrl() {
+  const url = $("urlInput").value.trim();
+  if (!url) return;
+  els.status.textContent = "Loading page…";
+  try {
+    const j = await (await api("/api/extract-url", {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ url }) })).json();
+    setText(j.text, j.title);
+    els.status.textContent = "Ready";
+  } catch (e) { els.status.textContent = "Ready"; snack(e.message); }
+}
+$("loadUrl").onclick = loadUrl;
+$("urlInput").onkeydown = (e) => { if (e.key === "Enter") loadUrl(); };
+
+// drag & drop
+let dragDepth = 0;
+addEventListener("dragenter", (e) => { if (e.dataTransfer.types.includes("Files")) { dragDepth++; $("drop").classList.add("show"); } });
+addEventListener("dragleave", () => { if (--dragDepth <= 0) { dragDepth = 0; $("drop").classList.remove("show"); } });
+addEventListener("dragover", (e) => e.preventDefault());
+addEventListener("drop", (e) => {
+  e.preventDefault(); dragDepth = 0; $("drop").classList.remove("show");
+  if (document.body.dataset.mode === "library") { if (e.dataTransfer.files.length) window.lib?.upload(e.dataTransfer.files); return; }
+  if (e.dataTransfer.files[0]) loadFile(e.dataTransfer.files[0]);
+});
+
+els.text.addEventListener("input", () => { state.chunks = []; updateCounts(); });
+els.clear.onclick = () => { setText("", null); els.sourceLabel.textContent = "Type or paste text below, open a file, load a webpage, or drop a file anywhere on this page."; };
+els.edit.onclick = () => { stop(); showEditor(); };
+
+// ---------- reader view ----------
+function showEditor() {
+  els.reader.classList.add("hidden"); els.text.classList.remove("hidden");
+  els.edit.classList.add("hidden"); els.viewTitle.textContent = "Text";
+}
+function showReader() {
+  els.reader.innerHTML = "";
+  let p = null, lastPara = -1;
+  state.chunks.forEach((c, i) => {
+    if (c.para !== lastPara) { p = document.createElement("p"); els.reader.append(p); lastPara = c.para; }
+    const s = document.createElement("span");
+    s.textContent = c.text + " "; s.dataset.i = i;
+    s.onclick = () => seek(i, true);
+    p.append(s);
+  });
+  els.text.classList.add("hidden"); els.reader.classList.remove("hidden");
+  els.edit.classList.remove("hidden"); els.viewTitle.textContent = "Reading";
+}
+function highlight() {
+  els.reader.querySelectorAll("span").forEach((s) => {
+    const i = +s.dataset.i;
+    s.classList.toggle("current", i === state.index);
+    s.classList.toggle("done", i < state.index);
+  });
+  const cur = els.reader.querySelector("span.current");
+  if (cur) cur.scrollIntoView({ block: "center", behavior: "smooth" });
+  const n = state.chunks.length;
+  els.progress.max = Math.max(n, 1);
+  els.progress.value = Math.min(state.index, n);
+  els.position.textContent = n ? `${Math.min(state.index + 1, n)} / ${n}` : "";
+}
+async function prepareChunks() {
+  const text = els.text.value.trim();
+  if (!text) { snack("Add some text first."); return false; }
+  const j = await (await api("/api/chunks", {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ text }) })).json();
+  const result = j.chunks;
+  state.chunks = result; state.index = 0; resetCache();
+  showReader();
+  return true;
+}
+
+// ---------- audio ----------
+function resetCache() {
+  for (const p of state.cache.values()) p.then((u) => URL.revokeObjectURL(u)).catch(() => {});
+  state.cache.clear();
+}
+function audioFor(i) {
+  const key = `${els.voice.value}|${els.speed.value}|${i}`;
+  if (!state.cache.has(key)) {
+    const p = api("/api/speak", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text: state.chunks[i].text, voice: els.voice.value, speed: Number(els.speed.value) }),
+    }).then((r) => r.blob()).then((b) => URL.createObjectURL(b));
+    p.catch(() => state.cache.delete(key));
+    state.cache.set(key, p);
+  }
+  return state.cache.get(key);
+}
+function prefetch(i) {
+  for (let k = i + 1; k <= i + 2 && k < state.chunks.length; k++) audioFor(k);
+}
+function setPlayingUI(on) {
+  state.playing = on;
+  els.playIcon.classList.toggle("hidden", on);
+  els.pauseIcon.classList.toggle("hidden", !on);
+}
+async function playIndex(i) {
+  const run = ++state.runId;
+  if (i >= state.chunks.length) { finish(); return; }
+  state.index = i; highlight();
+  els.status.textContent = "Generating…";
+  let url;
+  try { url = await audioFor(i); }
+  catch (e) { if (run === state.runId) { setPlayingUI(false); els.status.textContent = "Error"; snack(e.message); } return; }
+  if (run !== state.runId || !state.playing) return;
+  prefetch(i);
+  state.audio.src = url;
+  try { await state.audio.play(); els.status.textContent = "Playing"; }
+  catch (e) { if (run === state.runId) { setPlayingUI(false); snack("Playback blocked: " + e.message); } }
+}
+state.audio.onended = () => { if (state.playing) playIndex(state.index + 1); };
+function finish() {
+  setPlayingUI(false); state.index = state.chunks.length; highlight();
+  els.status.textContent = "Finished"; state.index = 0;
+}
+async function togglePlay() {
+  if (state.playing) {
+    state.audio.pause(); setPlayingUI(false); els.status.textContent = "Paused"; return;
+  }
+  if (!state.chunks.length) {
+    try { if (!(await prepareChunks())) return; } catch (e) { snack(e.message); return; }
+  }
+  setPlayingUI(true);
+  if (state.audio.src && state.audio.paused && state.audio.currentTime > 0 && !state.audio.ended) {
+    state.audio.play(); els.status.textContent = "Playing";
+  } else {
+    playIndex(state.index);
+  }
+}
+function seek(i, autoplay) {
+  if (!state.chunks.length) return;
+  i = Math.max(0, Math.min(i, state.chunks.length - 1));
+  state.audio.pause(); state.audio.removeAttribute("src");
+  state.index = i; highlight();
+  if (autoplay || state.playing) { setPlayingUI(true); playIndex(i); }
+  else state.runId++;
+}
+function stop() {
+  state.runId++;
+  state.audio.pause(); state.audio.removeAttribute("src");
+  setPlayingUI(false); state.index = 0;
+  els.status.textContent = "Ready";
+  if (state.chunks.length) highlight();
+}
+els.play.onclick = togglePlay;
+els.prev.onclick = () => seek(state.index - 1);
+els.next.onclick = () => seek(state.index + 1);
+els.stop.onclick = stop;
+addEventListener("keydown", (e) => {
+  if (document.body.dataset.mode === "read" && e.code === "Space" && !["TEXTAREA", "INPUT", "SELECT", "BUTTON"].includes(document.activeElement.tagName)) {
+    e.preventDefault(); togglePlay();
+  }
+});
+
+loadVoices(); pollHealth(); updateCounts();
+
+// ---------- mode tabs ----------
+window.stopReading = stop;
+function setMode(mode) {
+  document.body.dataset.mode = mode;
+  for (const m of ["read", "talk", "library", "settings"]) $("tab" + m[0].toUpperCase() + m.slice(1)).classList.toggle("active", mode === m);
+  if (mode !== "read") stop();
+  if (mode !== "talk") window.talk?.stop();
+  if (mode === "library") window.lib?.refresh();
+  store.set("mode", mode);
+}
+window.setMode = setMode;
+window.readAloud = (text, label) => { setMode("read"); setText(text, label); };
+$("tabRead").onclick = () => setMode("read");
+$("tabTalk").onclick = () => setMode("talk");
+$("tabLibrary").onclick = () => setMode("library");
+$("tabSettings").onclick = () => setMode("settings");
+setMode(store.get("mode", "read"));
+</script>
+<script src="/library.js"></script>
+<script src="/video.js"></script>
+<script src="/talk.js"></script>
+</body>
+</html>

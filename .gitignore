@@ -1,0 +1,10 @@
+# Your library: uploaded files, downloaded videos, documents
+/library/*
+
+# Database: conversations, transcripts, settings
+/data/
+
+# Python
+.venv/
+__pycache__/
+*.pyc
