@@ -10,19 +10,38 @@ conversations with your [Ollama](https://ollama.com) models, and keeps a library
 
 Nothing leaves your machine, except when you load a webpage or download a YouTube video.
 
-**Requirements:** Windows, a GPU is strongly recommended (setup installs the CUDA 12.8 build of
-PyTorch, which RTX 50-series cards need), and Ollama with at least one chat model for the Talk tab.
+## Requirements
+
+**Install yourself**
+
+| Needs | For | Notes |
+|---|---|---|
+| Windows 10 or 11 | Everything | The scripts are `.bat` files. |
+| An NVIDIA GPU with a current driver | Fast voice and speech recognition | Strongly recommended. Setup installs the CUDA 12.8 build of PyTorch, which RTX 50-series cards need. It runs on the CPU without one, but slowly. |
+| [Ollama](https://ollama.com) with a chat model pulled | The Talk tab | Must be running. Read and Library work without it. |
+| [eSpeak NG](https://github.com/espeak-ng/espeak-ng/releases) (`.msi`) | Pronouncing unusual words and names | Optional but recommended. |
+| About 10 GB of free disk space | PyTorch (about 2.7 GB), the Kokoro voice (about 330 MB), Whisper (about 1.6 GB) and Python packages | Videos you add to the library need more. |
+| An internet connection | Setup, first-run model downloads, loading webpages, YouTube downloads | Everything else runs offline. |
+
+**Installed for you by `setup.bat`**
+
+| Component | How |
+|---|---|
+| **Python 3.12** (Kokoro doesn't support 3.13 yet) | Installed with `winget` if it's missing. If winget isn't available, install it yourself from https://www.python.org/downloads/release/python-3128/ and tick *"Add python.exe to PATH"*. |
+| PyTorch (CUDA 12.8 build) | `pip`, into a local `.venv` folder |
+| Python packages in [`server/requirements.txt`](server/requirements.txt): `kokoro`, `transformers` (Whisper), `fastapi`, `uvicorn`, `python-multipart`, `soundfile`, `numpy`, `pypdf`, `python-docx`, `requests`, `beautifulsoup4`, `yt-dlp` | `pip`, into the same `.venv` |
+| ffmpeg (audio extraction and YouTube merging) | Bundled through the `imageio-ffmpeg` package. A system ffmpeg is used only if that one is missing. |
+
+**Only if you hit this:** YouTube downloads sometimes need a JavaScript runtime. If the error
+mentions one, install Deno with `winget install DenoLand.Deno` and restart the app.
 
 ## Quick start
 
-1. Install **Ollama** (https://ollama.com), pull a model, and make sure it's running.
-2. *(Optional but recommended)* Install **eSpeak NG** from
-   https://github.com/espeak-ng/espeak-ng/releases (get the `.msi`). Kokoro uses it to
-   pronounce unusual words and names.
-3. Double-click **`setup.bat`** (one time). It installs Python 3.12 with winget if it's missing
-   (Kokoro doesn't support 3.13 yet), then PyTorch (about 2.7 GB), Kokoro and the server packages,
-   and prints whether it found your GPU. This takes a while on a slow connection.
-4. Double-click **`start.bat`**. It starts the server and opens http://localhost:48765.
+1. Install **Ollama**, pull a model, and make sure it's running. Optionally install **eSpeak NG**
+   (see [Requirements](#requirements)).
+2. Double-click **`setup.bat`** (one time). It installs Python 3.12 if needed, then PyTorch and
+   the other packages, and prints whether it found your GPU. This takes a while on a slow connection.
+3. Double-click **`start.bat`**. It starts the server and opens http://localhost:48765.
 
 The first run downloads the voice model (about 330 MB) and Whisper (about 1.6 GB) from Hugging
 Face. After that it runs offline. Your browser asks for microphone access the first time you use
