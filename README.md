@@ -199,3 +199,12 @@ Set these as environment variables before `start.bat`, or edit the top of `serve
   `.venv\Scripts\pip install --force-reinstall torch --index-url https://download.pytorch.org/whl/cu128`.
 - **A PDF has no readable text:** it's a scanned image and needs OCR first.
 - **Port 48765 is already in use:** change the port in `start.bat`, in both places.
+
+## License
+
+The code in this repository is released under the [MIT License](LICENSE).
+
+It installs third-party packages and downloads models that have their own licenses, for example
+Kokoro (Apache 2.0) and Whisper (MIT). A few, including eSpeak NG and the phonemizer package, are
+GPL. They are installed on your machine by `setup.bat` and are not included in this repository.
+Your library and database are kept out of git by `.gitignore`.
